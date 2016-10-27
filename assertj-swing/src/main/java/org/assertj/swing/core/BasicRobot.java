@@ -71,6 +71,7 @@ import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 import javax.swing.JComponent;
 import javax.swing.JMenu;
+import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.KeyStroke;
 
@@ -96,6 +97,7 @@ import org.assertj.swing.util.ToolkitProvider;
  * @author Alex Ruiz
  * @author Yvonne Wang
  * @author Christian Rösch
+ * @author DaveBrad
  *
  * @see Robot
  */
@@ -646,7 +648,7 @@ public class BasicRobot implements Robot {
     moveMouse(c, (x > 0 ? x - 1 : x + 1), y);
   }
 
-  // Wait the given number of milliseconds for the component to be showing and ready.
+  /** Wait the given number of milliseconds for the component to be showing and ready. */
   @RunsInEDT
   private boolean waitForComponentToBeReady(@Nonnull Component c, long timeout) {
     if (isReadyForInput(c)) {
@@ -845,17 +847,18 @@ public class BasicRobot implements Robot {
     } while (eventQueue.peekEvent() != null);
   }
 
-  // Indicates whether we timed out waiting for the invocation to run
+  /** Indicates whether we timed out waiting for the invocation to run. */
   @RunsInEDT
   private boolean postInvocationEvent(@Nonnull EventQueue eventQueue, long timeout) {
     Object lock = new RobotIdleLock();
     synchronized (lock) {
-      eventQueue.postEvent(new InvocationEvent(toolkit, EMPTY_RUNNABLE, lock, true));
+      InvocationEvent event = new InvocationEvent(toolkit, EMPTY_RUNNABLE, lock, true);
+      eventQueue.postEvent(event);
       long start = currentTimeMillis();
       try {
-        // NOTE: on fast linux systems when showing a dialog, if we don't provide a timeout, we're never notified, and
-        // the test will wait forever (up through 1.5.0_05).
-        lock.wait(timeout);
+        while (!event.isDispatched() && currentTimeMillis() - start < timeout) {
+          lock.wait(timeout);
+        }
         return (currentTimeMillis() - start) >= settings.idleTimeout();
       } catch (InterruptedException e) {
       }
@@ -947,22 +950,31 @@ public class BasicRobot implements Robot {
   @RunsInEDT
   private @Nullable JPopupMenu activePopupMenu() {
     List<Component> found = newArrayList(finder().findAll(POPUP_MATCHER));
-    if (found.size() >= 1) {
+
+    if (found.size() == 1) {
+      // single popup found, pass it back (most common optimization)
+      return (JPopupMenu) found.get(0);
+    }
+    // otherwise could be a cascade of popups
+    if (found.size() > 1) {
       return findOuterPopupMenu(found);
     }
+    // not found any popup
     return null;
+
   }
 
   @RunsInEDT
   private JPopupMenu findOuterPopupMenu(List<Component> found) {
-    if (found.size() == 1) {
-      return (JPopupMenu) found.get(0);
-    }
+    // need to determine the last/outer popup, or if there are more than
+    // one group of popups (the latter would be a condition of multiple
+    // active popups found and thus a failure condition)
     List<JPopupMenu> innerMenus = newArrayList();
-    for (Component component : found) {
-      innerMenus.addAll(popupMenus(((JPopupMenu) component).getComponents()));
-    }
+
+    innerMenus.addAll(determineInnerPopupsToRemove(found));
+
     found.removeAll(innerMenus);
+
     if (found.size() == 1) {
       return (JPopupMenu) found.get(0);
     }
@@ -999,6 +1011,59 @@ public class BasicRobot implements Robot {
       }
     }
     return menus;
+  }
+
+  @RunsInEDT
+  private Collection<? extends JPopupMenu> determineInnerPopupsToRemove(List<Component> found) {
+    // JPopupMenu contains JMenuItem's (note: JMenu extends JMenuItem):
+    // ...... JMenu [implying a cascading JPopupMenu automatically set up]
+    // ...... JMenuItem (maybe text, checkbox,........,JMenu)
+    //
+    // A JPopupMenu has little sense as a component of another JPopupMenu as
+    // no text is displayed as a select-able menu-item
+    //
+    // lightweight and heavy weight have different approaches to popup menu
+    // implementation and storage (the Java tutorials do not do a good
+    // job of presenting the approaches)
+    //
+    // need to determine the way popup associate with each other in a cascade
+    // and set up menus-set to record inner menus that should be removed
+    Set<JPopupMenu> menusSetToRemoveData = newHashSet();
+
+    // go through the found popups and process the child components so as
+    // to work out the cascade relationships. The relationship is a mix
+    // of parent-popup, next-popup arrangement, and is further complicated by
+    // the light versus heavy weight approaches
+    for (Component fndComp : found) {
+      Component[] compArr = ((JPopupMenu) fndComp).getComponents();
+
+      for (Component component : compArr) {
+        if (component instanceof JPopupMenu) {
+          // in line with original day code of findActive popup
+          menusSetToRemoveData.add((JPopupMenu) component);
+        } else if (component instanceof JMenuItem) {
+          // could be heavy weight or lightweight
+          JMenuItem jmiComp = (JMenuItem) component;
+          JPopupMenu jpNextLevelComp = jmiComp.getComponentPopupMenu();
+
+          if (jpNextLevelComp == null) {
+            if (component instanceof JMenu) {
+              // JMenu is a menu item with a popup and as such will be a
+              // cascade item to another/next popup (lightweight)
+              // find the next popups (that is the next level of popup to
+              // see if this menu's popup-parent is cascading
+              JMenu jmComp = (JMenu) component;
+              jpNextLevelComp = jmComp.getPopupMenu();
+            }
+          }
+          if (jpNextLevelComp != null && found.contains(jpNextLevelComp)) {
+            // this menu item and its popup-parent are in fact an inner popup
+            menusSetToRemoveData.add((JPopupMenu) component.getParent());
+          }
+        }
+      }
+    }
+    return menusSetToRemoveData;
   }
 
   @RunsInEDT
