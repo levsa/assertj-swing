@@ -9,8 +9,6 @@ import javax.swing.SwingUtilities;
 import netx.jnlp.LaunchException;
 import netx.jnlp.LaunchHandler;
 import netx.jnlp.Launcher;
-import netx.jnlp.event.ApplicationEvent;
-import netx.jnlp.event.ApplicationListener;
 import netx.jnlp.runtime.ApplicationInstance;
 import netx.jnlp.runtime.JNLPRuntime;
 
@@ -60,28 +58,12 @@ public class NetxJnlpLauncher implements JnlpLauncher
     {
         try
         {
-            Runnable runnable = new Runnable()
-            {
-                @Override
-                public void run()
-                {
-                    Launcher launcher = new Launcher(launchHandler);
-                    JNLPRuntime.setBaseDir(new File("."));
-                    JNLPRuntime.setSecurityEnabled(false);
-                    JNLPRuntime.initialize();
-//                    try
-//                    {
-                        launcher.launchBackground(url);
-//                        launcher.launch(url);
-//                    }
-//                    catch (LaunchException e)
-//                    {
-//                        e.printStackTrace();
-//                    }
-
-                }
-            };
-            SwingUtilities.invokeLater(runnable);
+            JNLPRuntime.setBaseDir(new File("."));
+            JNLPRuntime.setSecurityEnabled(false);
+            JNLPRuntime.initialize();
+            Launcher launcher = new Launcher(launchHandler);
+//            launcher.launchBackground(url);
+            launcher.launch(url);
             return this;
         }
         catch (Exception e)

@@ -7,31 +7,32 @@ import java.awt.Frame;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.Collection;
 
 import javax.swing.JButton;
 import javax.swing.JMenu;
 import javax.swing.JPanel;
+import javax.swing.JTextField;
 import javax.swing.text.JTextComponent;
 
 import org.assertj.swing.core.BasicRobot;
+import org.assertj.swing.core.ComponentFinder;
 import org.assertj.swing.core.GenericTypeMatcher;
 import org.assertj.swing.core.Robot;
-import org.assertj.swing.edt.GuiActionRunner;
 import org.assertj.swing.finder.WindowFinder;
 import org.assertj.swing.fixture.DialogFixture;
 import org.assertj.swing.fixture.FrameFixture;
 import org.assertj.swing.fixture.JPanelFixture;
 import org.assertj.swing.fixture.JTextComponentFixture;
+import org.assertj.swing.launcher.JnlpLauncher;
 import org.assertj.swing.launcher.Launcher;
-import org.assertj.swing.launcher.NetxJnlpLauncher;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
-import netx.jnlp.JNLPFile;
 import netx.jnlp.LaunchException;
 import netx.jnlp.ParseException;
-import netx.jnlp.runtime.JNLPRuntime;
 
 public class JnlpTest
 {
@@ -87,20 +88,37 @@ public class JnlpTest
         LaunchException, IOException, ParseException
     {
         mRobot = BasicRobot.robotWithNewAwtHierarchyWithoutScreenLock();
-        netx.jnlp.Launcher launcher = new netx.jnlp.Launcher(
-            new NetxJnlpLauncher.NetxLaunchHandler());
-        JNLPRuntime.setBaseDir(new File("."));
-        JNLPRuntime.setSecurityEnabled(false);
-        JNLPRuntime.initialize();
-        launcher.launchBackground(
-            new JNLPFile(new File("/Users/levsa/Downloads/one_106_rc2.jnlp").toURI().toURL()));
+        JnlpLauncher launcher = Launcher.jnlp();
+//        String url = "https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/InputVerificationDialogDemoProject/InputVerificationDialogDemo.jnlp";
+//        String url = "https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/ModalityDemoProject/ModalityDemo.jnlp";
+        //URL url = new File("/Users/levsa/Downloads/InputVerificationDemo.jnlp").toURI().toURL();
+        URL url = new File("/Users/levsa/Downloads/one_106_rc2.jnlp").toURI().toURL();
+        launcher.atUrl(url.toString());
+        launcher.start();
+            //new JNLPFile(new File("/Users/levsa/Downloads/one_106_rc2.jnlp").toURI().toURL()));
+//            new JNLPFile();
     }
 
+    @Test @Ignore
+    public void inputVerificationDemo() throws InterruptedException
+    {
+        dumpHierarchy();
+        Thread.sleep(300 * 10);
+        dumpHierarchy();
+        ComponentFinder finder = robot().finder();
+        Component component = finder.findByLabel("Loan Amount (10,000 - 10,000,000): ");
+        JTextComponent textComponent = (JTextField) component;
+        JTextComponentFixture fixture = new JTextComponentFixture(robot(), textComponent);
+        fixture.requireVisible();
+        fixture.setText("Hello ");
+        Thread.sleep(300 * 10);
+    }
 
     @Test
     public void application_launching_without_arguments_example() throws InterruptedException
     {
         login();
+        dumpHierarchy();
         Thread.sleep(300 * 1000);
         FrameFixture frameFixture = findFrame();
         JPanelFixture panel = frameFixture.panel(new GenericTypeMatcher<JPanel>(JPanel.class)
